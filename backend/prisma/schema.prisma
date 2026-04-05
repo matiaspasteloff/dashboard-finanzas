@@ -1,14 +1,10 @@
-// Configuración de Prisma
 generator client {
   provider = "prisma-client-js"
 }
 
-// Configuración de la Base de Datos
 datasource db {
   provider = "postgresql"
 }
-
-// Tablas 
 
 model User {
   id           String        @id @default(uuid())
@@ -18,24 +14,41 @@ model User {
   createdAt    DateTime      @default(now())
   transactions Transaction[]
   categories   Category[]
+  budgets      Budget[]
 }
 
 model Category {
-  id          String        @id @default(uuid())
-  name        String
-  type        String        
-  userId      String
-  user        User          @relation(fields: [userId], references: [id])
+  id           String        @id @default(uuid())
+  name         String
+  type         String
+  userId       String
+  user         User          @relation(fields: [userId], references: [id])
   transactions Transaction[]
+  budgets      Budget[]
 }
 
 model Transaction {
-  id          String   @id @default(uuid())
-  amount      Float    
-  description String
-  date        DateTime @default(now())
-  userId      String
-  user        User     @relation(fields: [userId], references: [id])
-  categoryId  String
-  category    Category @relation(fields: [categoryId], references: [id])
+  id                  String   @id @default(uuid())
+  amount              Float
+  description         String
+  date                DateTime @default(now())
+  userId              String
+  user                User     @relation(fields: [userId], references: [id])
+  categoryId          String
+  category            Category @relation(fields: [categoryId], references: [id])
+  isRecurring         Boolean  @default(false)
+  recurrenceFrequency String?
+}
+
+model Budget {
+  id         String   @id @default(uuid())
+  amount     Float
+  month      Int
+  year       Int
+  userId     String
+  categoryId String
+  user       User     @relation(fields: [userId], references: [id])
+  category   Category @relation(fields: [categoryId], references: [id])
+
+  @@unique([userId, categoryId, month, year])
 }
