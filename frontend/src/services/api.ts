@@ -1,5 +1,5 @@
 
-const API_URL = 'https://dashboard-finanzas-api.onrender.com';
+const API_URL = 'http://localhost:5000/api';
 
 export const fetchAPI = async (endpoint: string, options: RequestInit = {}) => {
     const token = localStorage.getItem('token');
