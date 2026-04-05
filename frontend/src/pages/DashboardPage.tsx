@@ -1,20 +1,11 @@
 import { useEffect, useState } from 'react';
 import {
-    PieChart,
-    Pie,
-    Cell,
-    Tooltip,
-    ResponsiveContainer,
-    BarChart,
-    Bar,
-    XAxis,
-    YAxis,
-    CartesianGrid,
+    PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
+    BarChart, Bar, XAxis, YAxis, CartesianGrid,
 } from 'recharts';
 import { transactionService, type Transaction } from '../services/transaction.service';
 import { categoryService, type Category } from '../services/category.service';
-
-// ─── Helpers ────────────────────────────────────────────────────────────────
+import { budgetService, type Budget } from '../services/budget.service';
 
 function formatARS(amount: number): string {
     return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(amount);
@@ -28,26 +19,16 @@ function formatShort(amount: number): string {
 
 const CHART_COLORS = ['#6366F1', '#10B981', '#F59E0B', '#F43F5E', '#8B5CF6', '#06B6D4', '#EC4899'];
 
-// ─── Types ───────────────────────────────────────────────────────────────────
-
 interface MetricCardProps {
-    title: string;
-    value: string;
-    change?: string;
-    positive?: boolean;
-    icon: React.ReactNode;
-    accent: string;
+    title: string; value: string; change?: string;
+    positive?: boolean; icon: React.ReactNode; accent: string;
 }
-
-// ─── MetricCard ──────────────────────────────────────────────────────────────
 
 function MetricCard({ title, value, change, positive, icon, accent }: MetricCardProps) {
     return (
         <div className="bg-white rounded-2xl p-6 shadow-card border border-slate-100 hover:shadow-card-hover transition-all duration-300 group">
             <div className="flex items-start justify-between mb-4">
-                <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${accent}`}>
-                    {icon}
-                </div>
+                <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${accent}`}>{icon}</div>
                 {change && (
                     <span className={`text-xs font-semibold px-2 py-1 rounded-lg ${positive ? 'bg-income-bg text-income-text' : 'bg-expense-bg text-expense-text'}`}>
                         {change}
@@ -60,24 +41,18 @@ function MetricCard({ title, value, change, positive, icon, accent }: MetricCard
     );
 }
 
-// ─── Empty state ─────────────────────────────────────────────────────────────
-
 function EmptyState({ message }: { message: string }) {
     return (
         <div className="flex flex-col items-center justify-center py-16 text-slate-400">
             <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="mb-3 text-slate-300">
-                <circle cx="12" cy="12" r="10" />
-                <line x1="12" y1="8" x2="12" y2="12" />
-                <line x1="12" y1="16" x2="12.01" y2="16" />
+                <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
             </svg>
             <p className="text-sm">{message}</p>
         </div>
     );
 }
 
-// ─── Custom Tooltip ───────────────────────────────────────────────────────────
-
-function CustomTooltip({ active, payload }: { active?: boolean; payload?: Array<{ name: string; value: number; payload: { fill: string } }> }) {
+function CustomTooltip({ active, payload }: { active?: boolean; payload?: Array<{ name: string; value: number }> }) {
     if (active && payload && payload.length) {
         return (
             <div className="bg-white border border-slate-100 rounded-xl shadow-card-md px-4 py-3">
@@ -89,75 +64,86 @@ function CustomTooltip({ active, payload }: { active?: boolean; payload?: Array<
     return null;
 }
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
+function BudgetRow({ budget, spent }: { budget: Budget; spent: number }) {
+    const pct = budget.amount > 0 ? Math.min(100, (spent / budget.amount) * 100) : 0;
+    const barColor = pct >= 90 ? '#F43F5E' : pct >= 70 ? '#F59E0B' : '#10B981';
+
+    return (
+        <div className="flex items-center gap-3">
+            <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-semibold text-slate-700 truncate">{budget.category.name}</span>
+                    <span className="text-xs text-slate-400 num ml-2 flex-shrink-0">{formatShort(spent)} / {formatShort(budget.amount)}</span>
+                </div>
+                <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                    <div className="h-full rounded-full transition-all duration-500" style={{ width: `${pct}%`, backgroundColor: barColor }} />
+                </div>
+            </div>
+            <span className="text-xs font-bold num w-10 text-right" style={{ color: barColor }}>{pct.toFixed(0)}%</span>
+        </div>
+    );
+}
 
 export default function DashboardPage() {
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [categories, setCategories] = useState<Category[]>([]);
+    const [budgets, setBudgets] = useState<Budget[]>([]);
     const [loading, setLoading] = useState(true);
 
+    const now = new Date();
+    const currentMonth = now.getMonth() + 1;
+    const currentYear = now.getFullYear();
+
     useEffect(() => {
-        Promise.all([transactionService.getAll(), categoryService.getAll()])
-            .then(([txs, cats]) => {
-                setTransactions(txs);
-                setCategories(cats);
-            })
-            .finally(() => setLoading(false));
+        Promise.all([
+            transactionService.getAll(),
+            categoryService.getAll(),
+            budgetService.getAll(currentMonth, currentYear),
+        ]).then(([txs, cats, bgs]) => {
+            setTransactions(txs);
+            setCategories(cats);
+            setBudgets(bgs);
+        }).finally(() => setLoading(false));
     }, []);
 
-    // ── Metrics ────────────────────────────────────────────────────────────────
-    const now = new Date();
-    const thisMonth = transactions.filter((t) => {
+    const thisMonth = transactions.filter(t => {
         const d = new Date(t.date);
         return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
     });
 
-    const catMap = Object.fromEntries(categories.map((c) => [c.id, c]));
+    const catMap = Object.fromEntries(categories.map(c => [c.id, c]));
 
-    const totalIncome = thisMonth
-        .filter((t) => catMap[t.categoryId]?.type === 'INCOME')
-        .reduce((s, t) => s + t.amount, 0);
-
-    const totalExpense = thisMonth
-        .filter((t) => catMap[t.categoryId]?.type === 'EXPENSE')
-        .reduce((s, t) => s + t.amount, 0);
-
+    const totalIncome = thisMonth.filter(t => catMap[t.categoryId]?.type === 'INCOME').reduce((s, t) => s + t.amount, 0);
+    const totalExpense = thisMonth.filter(t => catMap[t.categoryId]?.type === 'EXPENSE').reduce((s, t) => s + t.amount, 0);
     const balance = totalIncome - totalExpense;
 
-    // ── Pie chart: expense by category ────────────────────────────────────────
     const expenseByCategory = categories
-        .filter((c) => c.type === 'EXPENSE')
-        .map((c) => ({
-            name: c.name,
-            value: thisMonth
-                .filter((t) => t.categoryId === c.id)
-                .reduce((s, t) => s + t.amount, 0),
-        }))
-        .filter((d) => d.value > 0);
+        .filter(c => c.type === 'EXPENSE')
+        .map(c => ({ name: c.name, value: thisMonth.filter(t => t.categoryId === c.id).reduce((s, t) => s + t.amount, 0) }))
+        .filter(d => d.value > 0);
 
-    // ── Bar chart: daily totals (last 7 days) ─────────────────────────────────
     const last7 = Array.from({ length: 7 }, (_, i) => {
         const d = new Date();
         d.setDate(d.getDate() - (6 - i));
         const label = d.toLocaleDateString('es-AR', { weekday: 'short' });
-        const dayTxs = transactions.filter((t) => {
-            const td = new Date(t.date);
-            return td.toDateString() === d.toDateString();
-        });
-        const income = dayTxs.filter((t) => catMap[t.categoryId]?.type === 'INCOME').reduce((s, t) => s + t.amount, 0);
-        const expense = dayTxs.filter((t) => catMap[t.categoryId]?.type === 'EXPENSE').reduce((s, t) => s + t.amount, 0);
+        const dayTxs = transactions.filter(t => new Date(t.date).toDateString() === d.toDateString());
+        const income = dayTxs.filter(t => catMap[t.categoryId]?.type === 'INCOME').reduce((s, t) => s + t.amount, 0);
+        const expense = dayTxs.filter(t => catMap[t.categoryId]?.type === 'EXPENSE').reduce((s, t) => s + t.amount, 0);
         return { day: label, Ingresos: income, Gastos: expense };
     });
 
-    // ── Recent transactions ───────────────────────────────────────────────────
-    const recent = [...transactions]
-        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-        .slice(0, 5);
+    const recent = [...transactions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5);
+
+    // Budget spending map
+    const spendingMap = thisMonth.reduce<Record<string, number>>((acc, t) => {
+        acc[t.categoryId] = (acc[t.categoryId] ?? 0) + t.amount;
+        return acc;
+    }, {});
 
     if (loading) {
         return (
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-                {[1, 2, 3].map((i) => (
+                {[1, 2, 3].map(i => (
                     <div key={i} className="bg-white rounded-2xl p-6 shadow-card border border-slate-100 animate-pulse">
                         <div className="w-11 h-11 rounded-xl bg-slate-100 mb-4" />
                         <div className="h-4 bg-slate-100 rounded w-24 mb-2" />
@@ -170,54 +156,21 @@ export default function DashboardPage() {
 
     return (
         <div className="space-y-6 animate-slide-up">
-
-            {/* ── Metric cards ─────────────────────────────────────────────────── */}
+            {/* Metric cards */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <MetricCard
-                    title="Saldo del mes"
-                    value={formatARS(balance)}
-                    positive={balance >= 0}
-                    change={balance >= 0 ? '▲ Positivo' : '▼ Negativo'}
-                    accent="bg-brand-50"
-                    icon={
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6366F1" strokeWidth="2">
-                            <line x1="12" y1="1" x2="12" y2="23" />
-                            <path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" />
-                        </svg>
-                    }
+                <MetricCard title="Saldo del mes" value={formatARS(balance)} positive={balance >= 0} change={balance >= 0 ? '▲ Positivo' : '▼ Negativo'} accent="bg-brand-50"
+                    icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6366F1" strokeWidth="2"><line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" /></svg>}
                 />
-                <MetricCard
-                    title="Ingresos del mes"
-                    value={formatARS(totalIncome)}
-                    positive
-                    change={`↑ ${transactions.filter((t) => catMap[t.categoryId]?.type === 'INCOME').length} ops.`}
-                    accent="bg-income-bg"
-                    icon={
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2">
-                            <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" />
-                            <polyline points="17 6 23 6 23 12" />
-                        </svg>
-                    }
+                <MetricCard title="Ingresos del mes" value={formatARS(totalIncome)} positive change={`↑ ${transactions.filter(t => catMap[t.categoryId]?.type === 'INCOME').length} ops.`} accent="bg-income-bg"
+                    icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18" /><polyline points="17 6 23 6 23 12" /></svg>}
                 />
-                <MetricCard
-                    title="Gastos del mes"
-                    value={formatARS(totalExpense)}
-                    positive={false}
-                    change={`↓ ${transactions.filter((t) => catMap[t.categoryId]?.type === 'EXPENSE').length} ops.`}
-                    accent="bg-expense-bg"
-                    icon={
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#F43F5E" strokeWidth="2">
-                            <polyline points="23 18 13.5 8.5 8.5 13.5 1 6" />
-                            <polyline points="17 18 23 18 23 12" />
-                        </svg>
-                    }
+                <MetricCard title="Gastos del mes" value={formatARS(totalExpense)} positive={false} change={`↓ ${transactions.filter(t => catMap[t.categoryId]?.type === 'EXPENSE').length} ops.`} accent="bg-expense-bg"
+                    icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#F43F5E" strokeWidth="2"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6" /><polyline points="17 18 23 18 23 12" /></svg>}
                 />
             </div>
 
-            {/* ── Charts row ───────────────────────────────────────────────────── */}
+            {/* Charts */}
             <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
-
-                {/* Bar chart – 3/5 */}
                 <div className="lg:col-span-3 bg-white rounded-2xl p-6 shadow-card border border-slate-100">
                     <div className="flex items-center justify-between mb-6">
                         <div>
@@ -229,9 +182,7 @@ export default function DashboardPage() {
                             <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-expense-DEFAULT inline-block" />Gastos</span>
                         </div>
                     </div>
-                    {last7.every((d) => d.Ingresos === 0 && d.Gastos === 0) ? (
-                        <EmptyState message="No hay transacciones en los últimos 7 días" />
-                    ) : (
+                    {last7.every(d => d.Ingresos === 0 && d.Gastos === 0) ? <EmptyState message="No hay transacciones en los últimos 7 días" /> : (
                         <ResponsiveContainer width="100%" height={200}>
                             <BarChart data={last7} barCategoryGap="30%" barGap={4}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
@@ -244,31 +195,17 @@ export default function DashboardPage() {
                         </ResponsiveContainer>
                     )}
                 </div>
-
-                {/* Donut chart – 2/5 */}
                 <div className="lg:col-span-2 bg-white rounded-2xl p-6 shadow-card border border-slate-100">
                     <div className="mb-4">
                         <h3 className="text-base font-bold text-slate-900">Gastos por categoría</h3>
                         <p className="text-xs text-slate-400 mt-0.5">Distribución del mes actual</p>
                     </div>
-                    {expenseByCategory.length === 0 ? (
-                        <EmptyState message="Sin gastos este mes" />
-                    ) : (
+                    {expenseByCategory.length === 0 ? <EmptyState message="Sin gastos este mes" /> : (
                         <>
                             <ResponsiveContainer width="100%" height={160}>
                                 <PieChart>
-                                    <Pie
-                                        data={expenseByCategory}
-                                        cx="50%"
-                                        cy="50%"
-                                        innerRadius={48}
-                                        outerRadius={72}
-                                        paddingAngle={3}
-                                        dataKey="value"
-                                    >
-                                        {expenseByCategory.map((_, i) => (
-                                            <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
-                                        ))}
+                                    <Pie data={expenseByCategory} cx="50%" cy="50%" innerRadius={48} outerRadius={72} paddingAngle={3} dataKey="value">
+                                        {expenseByCategory.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
                                     </Pie>
                                     <Tooltip content={<CustomTooltip />} />
                                 </PieChart>
@@ -289,7 +226,25 @@ export default function DashboardPage() {
                 </div>
             </div>
 
-            {/* ── Recent transactions ───────────────────────────────────────────── */}
+            {/* Budget progress */}
+            {budgets.length > 0 && (
+                <div className="bg-white rounded-2xl p-6 shadow-card border border-slate-100">
+                    <div className="flex items-center justify-between mb-5">
+                        <div>
+                            <h3 className="text-base font-bold text-slate-900">Presupuestos del mes</h3>
+                            <p className="text-xs text-slate-400 mt-0.5">Seguimiento de gastos vs límites</p>
+                        </div>
+                        <a href="/budgets" className="text-xs text-brand-500 font-semibold hover:underline">Gestionar →</a>
+                    </div>
+                    <div className="space-y-4">
+                        {budgets.map(budget => (
+                            <BudgetRow key={budget.id} budget={budget} spent={spendingMap[budget.categoryId] ?? 0} />
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {/* Recent transactions */}
             <div className="bg-white rounded-2xl p-6 shadow-card border border-slate-100">
                 <div className="flex items-center justify-between mb-5">
                     <div>
@@ -298,26 +253,25 @@ export default function DashboardPage() {
                     </div>
                     <a href="/transactions" className="text-xs text-brand-500 font-semibold hover:underline">Ver todas →</a>
                 </div>
-
-                {recent.length === 0 ? (
-                    <EmptyState message="Todavía no tenés transacciones registradas" />
-                ) : (
+                {recent.length === 0 ? <EmptyState message="Todavía no tenés transacciones registradas" /> : (
                     <div className="space-y-3">
-                        {recent.map((t) => {
+                        {recent.map(t => {
                             const cat = catMap[t.categoryId];
                             const isIncome = cat?.type === 'INCOME';
                             return (
                                 <div key={t.id} className="flex items-center gap-4 p-3 rounded-xl hover:bg-slate-50 transition-colors group">
                                     <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${isIncome ? 'bg-income-bg' : 'bg-expense-bg'}`}>
                                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={isIncome ? '#10B981' : '#F43F5E'} strokeWidth="2">
-                                            {isIncome
-                                                ? <><polyline points="23 6 13.5 15.5 8.5 10.5 1 18" /><polyline points="17 6 23 6 23 12" /></>
-                                                : <><polyline points="23 18 13.5 8.5 8.5 13.5 1 6" /><polyline points="17 18 23 18 23 12" /></>
-                                            }
+                                            {isIncome ? <><polyline points="23 6 13.5 15.5 8.5 10.5 1 18" /><polyline points="17 6 23 6 23 12" /></> : <><polyline points="23 18 13.5 8.5 8.5 13.5 1 6" /><polyline points="17 18 23 18 23 12" /></>}
                                         </svg>
                                     </div>
                                     <div className="flex-1 min-w-0">
-                                        <p className="text-sm font-semibold text-slate-800 truncate">{t.description}</p>
+                                        <div className="flex items-center gap-2">
+                                            <p className="text-sm font-semibold text-slate-800 truncate">{t.description}</p>
+                                            {t.isRecurring && (
+                                                <span className="flex-shrink-0 text-xs bg-brand-50 text-brand-600 px-1.5 py-0.5 rounded-md font-medium">↻</span>
+                                            )}
+                                        </div>
                                         <p className="text-xs text-slate-400 mt-0.5">
                                             {cat?.name ?? 'Sin categoría'} · {new Date(t.date).toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })}
                                         </p>
